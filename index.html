@@ -142,6 +142,8 @@ body.hideko .pko .kt.show{filter:none}
 .built .chip{background:var(--accent);color:var(--accentink)}
 .verdict{font-size:14px;font-weight:700}.verdict.ok{color:var(--ok)}.verdict.bad{color:var(--bad)}
 .ans{font-family:var(--f-jp);font-size:17px;background:var(--okbg);border-radius:8px;padding:6px 10px;line-height:2}
+.kb{display:flex;flex-direction:column;gap:8px;margin:2px 0}
+.kb textarea{font:inherit;font-family:var(--f-jp);font-size:17px;background:var(--paper2);color:var(--ink);border:1px solid var(--accent);border-radius:8px;padding:8px 10px;width:100%;resize:vertical}
 /* roleplay */
 .chat{display:flex;flex-direction:column;gap:10px;margin:10px 0}
 .scene{font-family:var(--f-mono);font-size:12px;color:var(--mute);border-top:1px dashed var(--line);padding-top:8px}
@@ -250,7 +252,7 @@ function speak(jp,opts={}){return new Promise(res=>{
 function stopAudio(){if(hasTTS)speechSynthesis.cancel();stopRec()}
 /* ---------- speech: recognition ---------- */
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-const APPV='v6';
+const APPV='v7';
 let recObj=null,recCb=null;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const EVS=['start','audiostart','soundstart','speechstart','speechend','soundend','audioend','nomatch','error','end'];
@@ -314,11 +316,22 @@ function showResult(box,r,jp,n,id){
   if(r.aborted){res.hidden=true;return null}
   const g=grade(r.alts,jp);const c=cls(g.s);
   res.className='res '+c;
-  res.innerHTML=`<span class="sc">${Math.round(g.s*100)}%</span> ${msg(g.s)}<div class="diff">${diffHtml(g.v,g.h)}</div><div class="heard">들린 말: ${esc(g.h)}</div>`;
+  res.innerHTML=`<span class="sc">${Math.round(g.s*100)}%</span> ${msg(g.s)}<div class="diff">${diffHtml(g.v,g.h)}</div><div class="heard">${(S.set.input||'kb')==='mic'&&SR?'들린 말':'입력한 말'}: ${esc(g.h)}</div>`;
   if(n!=null&&id){setBest(n,id,g.s,jp,REG[id]&&REG[id].ko);const b=box.querySelector('[data-badge]');if(b)b.innerHTML=bestBadge(n,id)}
   return g;
 }
 async function doMic(btn,box,jp,n,id,after){
+  if((S.set.input||'kb')!=='mic'||!SR){
+    let kb=box.querySelector(':scope > .kb');if(kb){kb.remove();return}
+    kb=document.createElement('div');kb.className='kb';
+    kb.innerHTML=`<textarea lang="ja" rows="2" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" aria-label="일본어로 말한 내용" placeholder="일본어 키보드의 마이크 버튼을 눌러 말하세요"></textarea><div class="acts"><button class="btn pri" data-kbok>확인</button><button class="btn" data-kbx>닫기</button></div>`;
+    const res=box.querySelector('.res');res.parentNode.insertBefore(kb,res);
+    const ta=kb.querySelector('textarea');setTimeout(()=>ta.focus(),50);
+    kb.querySelector('[data-kbx]').onclick=()=>kb.remove();
+    kb.querySelector('[data-kbok]').onclick=()=>{const v=ta.value.trim();if(!v){ta.focus();return}
+      const r={alts:[v]};const g=showResult(box,r,jp,n,id);if(after)after(g,r);if(g&&g.s>=PASS)kb.remove();else{ta.select()}};
+    return;
+  }
   if(btn.classList.contains('live')){finishRec();return}
   document.querySelectorAll('.btn.live').forEach(b=>{b.classList.remove('live');b.classList.add('rec');b.innerHTML=IC.mic+'말하기'});
   btn.classList.remove('rec');btn.classList.add('live');btn.innerHTML=IC.stop+'듣는 중… (누르면 중지)';
@@ -343,8 +356,8 @@ function renderHome(){
   const weak=Object.values(S.best).filter(b=>b.s<PASS).length;
   let h=`<section class="hero"><div><h1>간사이에서 말하는 일본어,<br>소리 내어 연습하세요</h1><p class="muted">들려주는 문장을 듣고, 마이크로 따라 말하면 바로 점수가 나옵니다. 오사카 3박, 고베 4박, 교토 3박.</p></div>
   <div class="dday"><span class="small muted">출발까지</span><b>${dd>0?'D-'+dd:dd===0?'D-DAY':'D+'+(-dd)}</b><span class="small muted">1/18 오사카 도착</span></div></section>`;
-  if(!SR)h+=`<div class="notice" style="margin:10px 0">이 브라우저는 마이크 음성 인식을 지원하지 않습니다. 듣기는 가능하지만 말하기 채점은 Chrome, Edge, Safari에서 열어야 합니다.</div>`;
-  else if(hasTTS&&!voices.length)h+=`<div class="notice" style="margin:10px 0">일본어 음성이 아직 로드되지 않았습니다. 소리가 나지 않으면 기기 설정에서 일본어 음성을 설치해 주세요.</div>`;
+  if((S.set.input||'kb')==='kb')h+=`<div class="notice" style="margin:10px 0"><b>말하기 방법</b><br>"말하기"를 누르면 입력칸이 열립니다. 키보드의 <b>마이크 버튼</b>을 눌러 일본어로 말한 뒤 <b>확인</b>을 누르세요.<br><span class="small">아이폰: 설정 → 일반 → 키보드 → 키보드 → 새로운 키보드 추가 → <b>일본어</b>를 추가하고, 입력칸에서 🌐 버튼으로 일본어 키보드로 바꾼 뒤 마이크를 누르세요.</span></div>`;
+  if(hasTTS&&!voices.length)h+=`<div class="notice" style="margin:10px 0">일본어 음성이 아직 로드되지 않았습니다. 소리가 나지 않으면 기기 설정에서 일본어 음성을 설치해 주세요.</div>`;
   const D=DATA[t-1];
   h+=`<div class="card today" style="margin-top:12px"><div><div class="small muted mono">오늘 · Day ${t} · ${D.date} ${D.dow}</div><h2>${rb(D.title)}</h2></div><button class="btn pri" data-go="day" data-n="${t}">학습 시작</button></div>`;
   h+=`<div class="card" style="margin-top:14px"><div class="sh"><h2>73일 노선도</h2><span class="small muted mono">완료 ${doneN}/73</span></div>`;
@@ -366,6 +379,7 @@ function settingsHtml(){return `<div class="card" style="margin-top:14px"><div c
   <label><input type="checkbox" id="rubyT" ${S.set.ruby?'checked':''}> 후리가나 표시</label>
   <label><input type="checkbox" id="hideko" ${S.set.hideko?'checked':''}> 한국어 뜻 가리기(눌러서 보기)</label>
   <label><input type="checkbox" id="hidetext" ${S.set.hidetext?'checked':''}> 롤플레이 직원 대사 글자 숨기기</label>
+  <label>말하기 입력 <select id="inputSel"><option value="kb" ${(S.set.input||'kb')==='kb'?'selected':''}>키보드 음성 입력</option><option value="mic" ${S.set.input==='mic'?'selected':''}>마이크 직접 인식</option></select></label>
   <label>음성 <select id="voiceSel"></select></label>
   <label>화면 <select id="themeSel"><option value="">기기 설정</option><option value="light">밝게</option><option value="dark">어둡게</option></select></label>
   </div></div>`}
@@ -376,6 +390,7 @@ function bindSettings(){
   q('rate').onchange=()=>speak('こんにちは。関西へ ようこそ。');
   q('rubyT').onchange=e=>{S.set.ruby=e.target.checked;applySet();save()};
   q('hideko').onchange=e=>{S.set.hideko=e.target.checked;applySet();save()};
+  q('inputSel').onchange=e=>{S.set.input=e.target.value;save()};
   q('hidetext').onchange=e=>{S.set.hidetext=e.target.checked;save()};
   fillVoices(q('voiceSel'));q('voiceSel').onchange=e=>{S.set.voice=e.target.value;save();speak('こんにちは。')};
   const ts=q('themeSel');let tv='';try{tv=localStorage.getItem(KEY+':theme')||''}catch(e){}ts.value=tv;
