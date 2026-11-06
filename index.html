@@ -250,17 +250,21 @@ function speak(jp,opts={}){return new Promise(res=>{
 function stopAudio(){if(hasTTS)speechSynthesis.cancel();stopRec()}
 /* ---------- speech: recognition ---------- */
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-let recObj=null,recCb=null;
+let recObj=null,recCb=null,recRunning=false;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-function getRec(){if(!recObj){recObj=new SR();recObj.lang='ja-JP';recObj.interimResults=true;recObj.maxAlternatives=5;recObj.continuous=false}return recObj}
+function getRec(){if(!recObj){const r=new SR();r.lang='ja-JP';r.interimResults=true;r.maxAlternatives=5;r.continuous=false;
+  r.addEventListener('start',()=>{recRunning=true});r.addEventListener('end',()=>{recRunning=false});recObj=r}return recObj}
 function stopRec(){if(recObj){try{recObj.abort()}catch(e){}}if(recCb){const f=recCb;recCb=null;f({aborted:true})}}
 function finishRec(){if(recObj){try{recObj.stop()}catch(e){}}}
+async function waitIdle(ms){const t=Date.now();while(recRunning&&Date.now()-t<ms)await sleep(40)}
 function listen(onInterim){return new Promise(async res=>{
-  stopRec();if(hasTTS)speechSynthesis.cancel();
+  if(recCb){const f=recCb;recCb=null;f({aborted:true})}
+  if(hasTTS)speechSynthesis.cancel();
   if(!SR){res({error:'unsupported'});return}
-  await sleep(400);
-  const r=getRec();let done=false,last='',t1=null,t2=null;
-  const fin=o=>{if(done)return;done=true;clearTimeout(t1);clearTimeout(t2);r.onresult=r.onerror=r.onend=null;recCb=null;res(o)};
+  const r=getRec();
+  if(recRunning){try{r.abort()}catch(e){}await waitIdle(1200)}
+  let done=false,last='',t1=null,t2=null;
+  const fin=o=>{if(done)return;done=true;clearTimeout(t1);clearTimeout(t2);r.onresult=r.onerror=r.onend=null;recCb=null;res(o);if(recRunning)setTimeout(finishRec,0)};
   recCb=fin;
   r.onresult=e=>{const R=e.results[e.results.length-1];last=R[0].transcript;
     if(!R.isFinal){onInterim&&onInterim(last);clearTimeout(t2);t2=setTimeout(finishRec,1800);return}
@@ -268,7 +272,7 @@ function listen(onInterim){return new Promise(async res=>{
   r.onerror=e=>{const c=e.error||'error';if(c==='no-speech'||c==='aborted'){fin(last?{alts:[last]}:{error:'no-speech'})}else fin({error:c})};
   r.onend=()=>fin(last?{alts:[last]}:{error:'no-speech'});
   t1=setTimeout(finishRec,9000);
-  try{r.start()}catch(e){try{r.abort()}catch(_){}setTimeout(()=>{try{r.start()}catch(_){fin({error:'start'})}},400)}
+  try{r.start()}catch(e){try{r.abort()}catch(_){}await waitIdle(1200);try{r.start()}catch(_){fin({error:'start'})}}
 })}
 const ERR={'not-allowed':'마이크 권한이 막혀 있습니다. 주소창의 마이크 아이콘에서 허용해 주세요.','service-not-allowed':'이 환경에서는 음성 인식을 쓸 수 없습니다. Chrome이나 Edge로 열어 주세요.','no-speech':'목소리가 들리지 않았습니다. 다시 말해 보세요.','audio-capture':'마이크를 찾을 수 없습니다.','network':'음성 인식 서버에 연결하지 못했습니다. 인터넷 연결을 확인해 주세요.','unsupported':'이 브라우저는 음성 인식을 지원하지 않습니다. Chrome, Edge, Safari에서 열어 주세요.','start':'마이크를 시작하지 못했습니다. 잠시 후 다시 눌러 주세요.','error':'음성 인식에 실패했습니다.'};
 function grade(alts,jp){
