@@ -250,19 +250,25 @@ function speak(jp,opts={}){return new Promise(res=>{
 function stopAudio(){if(hasTTS)speechSynthesis.cancel();stopRec()}
 /* ---------- speech: recognition ---------- */
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-let rec=null,recCb=null;
-function stopRec(){if(rec){try{rec.abort()}catch(e){}rec=null}if(recCb){const f=recCb;recCb=null;f({aborted:true})}}
-function listen(onInterim){return new Promise(res=>{
+let recObj=null,recCb=null;
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+function getRec(){if(!recObj){recObj=new SR();recObj.lang='ja-JP';recObj.interimResults=true;recObj.maxAlternatives=5;recObj.continuous=false}return recObj}
+function stopRec(){if(recObj){try{recObj.abort()}catch(e){}}if(recCb){const f=recCb;recCb=null;f({aborted:true})}}
+function finishRec(){if(recObj){try{recObj.stop()}catch(e){}}}
+function listen(onInterim){return new Promise(async res=>{
   stopRec();if(hasTTS)speechSynthesis.cancel();
   if(!SR){res({error:'unsupported'});return}
-  const r=new SR();rec=r;r.lang='ja-JP';r.interimResults=true;r.maxAlternatives=5;r.continuous=false;
-  let done=false;const fin=o=>{if(done)return;done=true;if(rec===r)rec=null;recCb=null;res(o)};
+  await sleep(400);
+  const r=getRec();let done=false,last='',t1=null,t2=null;
+  const fin=o=>{if(done)return;done=true;clearTimeout(t1);clearTimeout(t2);r.onresult=r.onerror=r.onend=null;recCb=null;res(o)};
   recCb=fin;
-  r.onresult=e=>{const R=e.results[e.results.length-1];if(!R.isFinal){onInterim&&onInterim(R[0].transcript);return}
+  r.onresult=e=>{const R=e.results[e.results.length-1];last=R[0].transcript;
+    if(!R.isFinal){onInterim&&onInterim(last);clearTimeout(t2);t2=setTimeout(finishRec,1800);return}
     const alts=[];for(let i=0;i<R.length;i++)alts.push(R[i].transcript);fin({alts})};
-  r.onerror=e=>fin({error:e.error||'error'});
-  r.onend=()=>fin({error:'no-speech'});
-  try{r.start()}catch(e){fin({error:'start'})}
+  r.onerror=e=>{const c=e.error||'error';if(c==='no-speech'||c==='aborted'){fin(last?{alts:[last]}:{error:'no-speech'})}else fin({error:c})};
+  r.onend=()=>fin(last?{alts:[last]}:{error:'no-speech'});
+  t1=setTimeout(finishRec,9000);
+  try{r.start()}catch(e){try{r.abort()}catch(_){}setTimeout(()=>{try{r.start()}catch(_){fin({error:'start'})}},400)}
 })}
 const ERR={'not-allowed':'마이크 권한이 막혀 있습니다. 주소창의 마이크 아이콘에서 허용해 주세요.','service-not-allowed':'이 환경에서는 음성 인식을 쓸 수 없습니다. Chrome이나 Edge로 열어 주세요.','no-speech':'목소리가 들리지 않았습니다. 다시 말해 보세요.','audio-capture':'마이크를 찾을 수 없습니다.','network':'음성 인식 서버에 연결하지 못했습니다. 인터넷 연결을 확인해 주세요.','unsupported':'이 브라우저는 음성 인식을 지원하지 않습니다. Chrome, Edge, Safari에서 열어 주세요.','start':'마이크를 시작하지 못했습니다. 잠시 후 다시 눌러 주세요.','error':'음성 인식에 실패했습니다.'};
 function grade(alts,jp){
@@ -305,7 +311,7 @@ function showResult(box,r,jp,n,id){
   return g;
 }
 async function doMic(btn,box,jp,n,id,after){
-  if(btn.classList.contains('live')){stopRec();return}
+  if(btn.classList.contains('live')){finishRec();return}
   document.querySelectorAll('.btn.live').forEach(b=>{b.classList.remove('live');b.classList.add('rec');b.innerHTML=IC.mic+'말하기'});
   btn.classList.remove('rec');btn.classList.add('live');btn.innerHTML=IC.stop+'듣는 중… (누르면 중지)';
   const res=box.querySelector('.res');res.hidden=false;res.className='res info';res.textContent='말씀하세요…';
