@@ -258,14 +258,16 @@ function speak(jp,opts={}){return new Promise(res=>{
   speechSynthesis.cancel();const my=++ttsToken;
   const u=new SpeechSynthesisUtterance(ttsText(jp));u.lang='ja-JP';const v=opts.voice||pickVoice();if(v)u.voice=v;
   u.rate=opts.rate||S.set.rate;u.pitch=opts.pitch||1;
-  u.onend=()=>res(true);u.onerror=()=>res(false);
-  setTimeout(()=>speechSynthesis.speak(u),30);
+  let started=false;u.onstart=()=>{started=true};
+  u.onend=()=>res(true);u.onerror=e=>{if(e&&(e.error==='interrupted'||e.error==='canceled'))res(false);else{showToast('소리 재생 오류: '+((e&&e.error)||'알 수 없음'));res(false)}};
+  setTimeout(()=>{speechSynthesis.resume();speechSynthesis.speak(u)},30);
+  setTimeout(()=>{if(!started&&my===ttsToken){showToast('소리가 시작되지 않았습니다. 무음 스위치·볼륨을 확인하세요')}},2500);
 })}
 function altVoice(){const p=pickVoice();return voices.find(v=>p&&v.voiceURI!==p.voiceURI)||null}
 function stopAudio(){window.__rp={};if(hasTTS)speechSynthesis.cancel();stopRec()}
 /* ---------- speech: recognition ---------- */
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-const APPV='v10';
+const APPV='v11';
 let recObj=null,recCb=null;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const EVS=['start','audiostart','soundstart','speechstart','speechend','soundend','audioend','nomatch','error','end'];
@@ -404,7 +406,7 @@ function settingsHtml(){return `<div class="card" style="margin-top:14px"><div c
   <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px"><b>학습 기록 백업</b>
   <p class="small muted" style="margin:4px 0 8px">Safari 탭과 홈 화면 앱, 다른 기기는 기록이 따로 저장됩니다. 옮기려면 한쪽에서 복사하고 다른 쪽에서 붙여 넣으세요.</p>
   <div class="acts"><button class="btn" id="bkCopy">기록 코드 복사</button><button class="btn" id="bkApply">붙여 넣은 코드 적용</button></div>
-  <div class="acts" style="margin-top:6px"><button class="btn pri" id="bkSave">파일로 저장</button><button class="btn" id="bkLoad">파일 불러오기</button><input type="file" id="bkFile" accept=".txt,.json,text/plain" hidden></div>
+  <div class="acts" style="margin-top:6px"><button class="btn" id="ttsTest">소리 테스트</button><button class="btn pri" id="bkSave">파일로 저장</button><button class="btn" id="bkLoad">파일 불러오기</button><input type="file" id="bkFile" accept=".txt,.json,text/plain" hidden></div>
   <textarea id="bkText" rows="3" aria-label="기록 코드" placeholder="여기에 기록 코드를 붙여 넣고 '적용'을 누르세요" style="width:100%;margin-top:8px;font-family:var(--f-mono);font-size:12px;background:var(--paper2);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:6px"></textarea><div class="small" id="bkMsg" style="margin-top:4px"></div></div>
   </div>`}
 function fillVoices(sel){sel.innerHTML=voices.length?voices.map(v=>`<option value="${esc(v.voiceURI)}" ${((S.set.voice||pickVoice()&&pickVoice().voiceURI)===v.voiceURI)?'selected':''}>${esc(v.name)}</option>`).join(''):'<option>일본어 음성 없음</option>'}
@@ -414,6 +416,7 @@ function bindSettings(){
   q('rate').onchange=()=>speak('こんにちは。関西へ ようこそ。');
   q('rubyT').onchange=e=>{S.set.ruby=e.target.checked;applySet();save()};
   q('hideko').onchange=e=>{S.set.hideko=e.target.checked;applySet();save()};
+  q('ttsTest').onclick=()=>{loadVoices();speak('こんにちは。音が出ていますか。')};
   q('bkSave').onclick=async()=>{const m=q('bkMsg');const d=new Date();const nm='kansai-backup-'+d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0')+'.txt';
     const f=new File([exportCode()],nm,{type:'text/plain'});
     try{if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f],title:nm});m.textContent='공유 창에서 "파일에 저장"을 고르세요.';return}}catch(e){if(e&&e.name==='AbortError')return}
