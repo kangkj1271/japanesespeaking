@@ -267,7 +267,7 @@ function altVoice(){const p=pickVoice();return voices.find(v=>p&&v.voiceURI!==p.
 function stopAudio(){window.__rp={};if(hasTTS)speechSynthesis.cancel();stopRec()}
 /* ---------- speech: recognition ---------- */
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-const APPV='v11';
+const APPV='v12';
 let recObj=null,recCb=null;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const EVS=['start','audiostart','soundstart','speechstart','speechend','soundend','audioend','nomatch','error','end'];
@@ -417,10 +417,16 @@ function bindSettings(){
   q('rubyT').onchange=e=>{S.set.ruby=e.target.checked;applySet();save()};
   q('hideko').onchange=e=>{S.set.hideko=e.target.checked;applySet();save()};
   q('ttsTest').onclick=()=>{loadVoices();speak('こんにちは。音が出ていますか。')};
-  q('bkSave').onclick=async()=>{const m=q('bkMsg');const d=new Date();const nm='kansai-backup-'+d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0')+'.txt';
-    const f=new File([exportCode()],nm,{type:'text/plain'});
-    try{if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f],title:nm});m.textContent='공유 창에서 "파일에 저장"을 고르세요.';return}}catch(e){if(e&&e.name==='AbortError')return}
-    try{const u=URL.createObjectURL(f);const a=document.createElement('a');a.href=u;a.download=nm;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),4000);m.textContent=nm+' 저장을 시도했습니다.'}catch(e){m.textContent='파일 저장이 안 됩니다. 코드 복사를 사용하세요.'}};
+  q('bkSave').onclick=async()=>{const m=q('bkMsg');const d=new Date();const base='kansai-backup-'+d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0');
+    const code=exportCode();const errs=[];
+    for(const [ext,type] of [['.txt','text/plain'],['.json','application/json']]){
+      try{const f=new File([code],base+ext,{type});
+        if(!navigator.share){errs.push('share 미지원');break}
+        if(navigator.canShare&&!navigator.canShare({files:[f]})){errs.push(ext+' 공유불가');continue}
+        await navigator.share({files:[f]});m.textContent='공유 창에서 "파일에 저장"을 고르고 iCloud Drive 폴더를 선택하세요.';return}
+      catch(e){if(e&&e.name==='AbortError'){m.textContent='취소했습니다.';return}errs.push(ext+' '+(e&&e.name))}}
+    try{const u=URL.createObjectURL(new Blob([code],{type:'text/plain'}));const w=window.open(u,'_blank');if(w){m.textContent='열린 화면에서 공유 버튼 → "파일에 저장"을 누르세요.';return}}catch(e){errs.push('open '+(e&&e.name))}
+    q('bkText').value=code;m.textContent='파일 저장이 막혀 있어 코드를 아래 칸에 표시했습니다. 전체 선택 후 복사해 메모 앱 등에 붙여 두세요. ('+errs.join(', ')+')'};
   q('bkLoad').onclick=()=>q('bkFile').click();
   q('bkFile').onchange=async e=>{const m=q('bkMsg');const f=e.target.files[0];if(!f)return;try{importCode(await f.text());m.textContent='파일의 기록을 합쳤습니다.';updProg();setTimeout(()=>render(),600)}catch(err){m.textContent='파일을 읽지 못했습니다.'}e.target.value=''};
   q('bkCopy').onclick=async()=>{const c=exportCode();const m=q('bkMsg');q('bkText').value=c;
@@ -722,7 +728,7 @@ function runRP(D){
     const meV={pitch:.92,voice:altVoice()||undefined};
     ctl.querySelector('[data-act=meHear]').onclick=()=>speak(jp,meV);
     ctl.querySelector('[data-act=skip]').onclick=()=>{ctl.querySelector('.ansline').innerHTML=`<div class="ans" style="margin-top:8px">${rb(jp)}${t.alt&&t.alt.length>1?'<br><span class="small muted">다른 표현: '+t.alt.map(rb).join(' / ')+'</span>':''}</div><div class="acts" style="margin-top:6px"><button class="btn" data-act="hear">${IC.play}듣기</button></div>`;ctl.querySelector('[data-act=hear]').onclick=()=>speak(jp)};
-    ctl.querySelector('[data-act=pass]').onclick=()=>{stopAudio();ctl.remove();i++;next()};
+    ctl.querySelector('[data-act=pass]').onclick=()=>{if(hasTTS)speechSynthesis.cancel();stopRec();ctl.remove();i++;next()};
     if(S.set.readMe!==false&&!t.hint&&!hideMe()){await speak(jp,meV);if(window.__rp!==token)return}
     mic.onclick=()=>doMic(mic,ctl,jp,D.n,'rp'+i,(g)=>{
       if(!g)return;if(g.s>=PASS){b.classList.add('pass');setTimeout(()=>{if(window.__rp!==token)return;ctl.querySelector('[data-act=pass]').click()},1600)}});
