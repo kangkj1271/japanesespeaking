@@ -265,7 +265,7 @@ function altVoice(){const p=pickVoice();return voices.find(v=>p&&v.voiceURI!==p.
 function stopAudio(){window.__rp={};if(hasTTS)speechSynthesis.cancel();stopRec()}
 /* ---------- speech: recognition ---------- */
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-const APPV='v9';
+const APPV='v10';
 let recObj=null,recCb=null;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const EVS=['start','audiostart','soundstart','speechstart','speechend','soundend','audioend','nomatch','error','end'];
@@ -404,6 +404,7 @@ function settingsHtml(){return `<div class="card" style="margin-top:14px"><div c
   <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px"><b>학습 기록 백업</b>
   <p class="small muted" style="margin:4px 0 8px">Safari 탭과 홈 화면 앱, 다른 기기는 기록이 따로 저장됩니다. 옮기려면 한쪽에서 복사하고 다른 쪽에서 붙여 넣으세요.</p>
   <div class="acts"><button class="btn" id="bkCopy">기록 코드 복사</button><button class="btn" id="bkApply">붙여 넣은 코드 적용</button></div>
+  <div class="acts" style="margin-top:6px"><button class="btn pri" id="bkSave">파일로 저장</button><button class="btn" id="bkLoad">파일 불러오기</button><input type="file" id="bkFile" accept=".txt,.json,text/plain" hidden></div>
   <textarea id="bkText" rows="3" aria-label="기록 코드" placeholder="여기에 기록 코드를 붙여 넣고 '적용'을 누르세요" style="width:100%;margin-top:8px;font-family:var(--f-mono);font-size:12px;background:var(--paper2);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:6px"></textarea><div class="small" id="bkMsg" style="margin-top:4px"></div></div>
   </div>`}
 function fillVoices(sel){sel.innerHTML=voices.length?voices.map(v=>`<option value="${esc(v.voiceURI)}" ${((S.set.voice||pickVoice()&&pickVoice().voiceURI)===v.voiceURI)?'selected':''}>${esc(v.name)}</option>`).join(''):'<option>일본어 음성 없음</option>'}
@@ -413,6 +414,12 @@ function bindSettings(){
   q('rate').onchange=()=>speak('こんにちは。関西へ ようこそ。');
   q('rubyT').onchange=e=>{S.set.ruby=e.target.checked;applySet();save()};
   q('hideko').onchange=e=>{S.set.hideko=e.target.checked;applySet();save()};
+  q('bkSave').onclick=async()=>{const m=q('bkMsg');const d=new Date();const nm='kansai-backup-'+d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0')+'.txt';
+    const f=new File([exportCode()],nm,{type:'text/plain'});
+    try{if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f],title:nm});m.textContent='공유 창에서 "파일에 저장"을 고르세요.';return}}catch(e){if(e&&e.name==='AbortError')return}
+    try{const u=URL.createObjectURL(f);const a=document.createElement('a');a.href=u;a.download=nm;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),4000);m.textContent=nm+' 저장을 시도했습니다.'}catch(e){m.textContent='파일 저장이 안 됩니다. 코드 복사를 사용하세요.'}};
+  q('bkLoad').onclick=()=>q('bkFile').click();
+  q('bkFile').onchange=async e=>{const m=q('bkMsg');const f=e.target.files[0];if(!f)return;try{importCode(await f.text());m.textContent='파일의 기록을 합쳤습니다.';updProg();setTimeout(()=>render(),600)}catch(err){m.textContent='파일을 읽지 못했습니다.'}e.target.value=''};
   q('bkCopy').onclick=async()=>{const c=exportCode();const m=q('bkMsg');q('bkText').value=c;
     try{await navigator.clipboard.writeText(c);m.textContent='복사했습니다. 다른 쪽 화면에 붙여 넣으세요.'}catch(e){q('bkText').select();m.textContent='위 코드를 길게 눌러 복사하세요.'}};
   q('bkApply').onclick=()=>{const m=q('bkMsg');try{importCode(q('bkText').value);m.textContent='적용했습니다.';updProg();setTimeout(()=>render(),600)}catch(e){m.textContent='코드를 읽지 못했습니다. 전체를 정확히 붙여 넣었는지 확인해 주세요.'}};
