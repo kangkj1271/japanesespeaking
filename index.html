@@ -186,7 +186,17 @@ const DATA=[{"n": 1, "date": "11/6", "dow": "금", "title": "자기소개 확장
 const KEY='kansai-ja-coach-v1';
 let S={done:{},checks:{},best:{},set:{rate:0.9,ruby:true,hideko:false,hidetext:false,voice:''},w:{}};
 try{const r=localStorage.getItem(KEY);if(r){const o=JSON.parse(r);S=Object.assign(S,o);S.set=Object.assign({rate:0.9,ruby:true,hideko:false,hidetext:false,voice:''},o.set||{})}}catch(e){}
-function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+let storageOK=true;
+try{localStorage.setItem(KEY+':t','1');localStorage.removeItem(KEY+':t')}catch(e){storageOK=false}
+try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){storageOK=false}}
+function exportCode(){return btoa(unescape(encodeURIComponent(JSON.stringify({done:S.done,checks:S.checks,best:S.best,w:S.w,set:S.set}))))}
+function importCode(c){const o=JSON.parse(decodeURIComponent(escape(atob(c.trim()))));
+  Object.keys(o.done||{}).forEach(k=>{if(o.done[k])S.done[k]=true});
+  Object.keys(o.checks||{}).forEach(k=>{if(o.checks[k])S.checks[k]=true});
+  Object.entries(o.best||{}).forEach(([k,v])=>{if(!S.best[k]||v.s>S.best[k].s)S.best[k]=v});
+  Object.entries(o.w||{}).forEach(([k,v])=>{if(!S.w[k]||(v.c||0)>(S.w[k].c||0))S.w[k]=v});
+  if(o.set)S.set=Object.assign(S.set,o.set);save()}
 /* ---------- text helpers ---------- */
 const RB=/([一-龥々]+)\(([ぁ-んァ-ヶー・/]+)\)/g;
 const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -252,7 +262,7 @@ function speak(jp,opts={}){return new Promise(res=>{
 function stopAudio(){if(hasTTS)speechSynthesis.cancel();stopRec()}
 /* ---------- speech: recognition ---------- */
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-const APPV='v7';
+const APPV='v8';
 let recObj=null,recCb=null;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const EVS=['start','audiostart','soundstart','speechstart','speechend','soundend','audioend','nomatch','error','end'];
@@ -358,6 +368,7 @@ function renderHome(){
   <div class="dday"><span class="small muted">출발까지</span><b>${dd>0?'D-'+dd:dd===0?'D-DAY':'D+'+(-dd)}</b><span class="small muted">1/18 오사카 도착</span></div></section>`;
   if((S.set.input||'kb')==='kb')h+=`<div class="notice" style="margin:10px 0"><b>말하기 방법</b><br>"말하기"를 누르면 입력칸이 열립니다. 키보드의 <b>마이크 버튼</b>을 눌러 일본어로 말한 뒤 <b>확인</b>을 누르세요.<br><span class="small">아이폰: 설정 → 일반 → 키보드 → 키보드 → 새로운 키보드 추가 → <b>일본어</b>를 추가하고, 입력칸에서 🌐 버튼으로 일본어 키보드로 바꾼 뒤 마이크를 누르세요.</span></div>`;
   if(hasTTS&&!voices.length)h+=`<div class="notice" style="margin:10px 0">일본어 음성이 아직 로드되지 않았습니다. 소리가 나지 않으면 기기 설정에서 일본어 음성을 설치해 주세요.</div>`;
+  if(!storageOK)h+=`<div class="notice" style="margin:10px 0"><b>학습 기록이 저장되지 않는 상태입니다.</b> 사생활 보호 모드이거나 브라우저가 저장을 막고 있습니다. 일반 Safari 탭에서 열어 주세요.</div>`;
   const D=DATA[t-1];
   h+=`<div class="card today" style="margin-top:12px"><div><div class="small muted mono">오늘 · Day ${t} · ${D.date} ${D.dow}</div><h2>${rb(D.title)}</h2></div><button class="btn pri" data-go="day" data-n="${t}">학습 시작</button></div>`;
   h+=`<div class="card" style="margin-top:14px"><div class="sh"><h2>73일 노선도</h2><span class="small muted mono">완료 ${doneN}/73</span></div>`;
@@ -382,7 +393,12 @@ function settingsHtml(){return `<div class="card" style="margin-top:14px"><div c
   <label>말하기 입력 <select id="inputSel"><option value="kb" ${(S.set.input||'kb')==='kb'?'selected':''}>키보드 음성 입력</option><option value="mic" ${S.set.input==='mic'?'selected':''}>마이크 직접 인식</option></select></label>
   <label>음성 <select id="voiceSel"></select></label>
   <label>화면 <select id="themeSel"><option value="">기기 설정</option><option value="light">밝게</option><option value="dark">어둡게</option></select></label>
-  </div></div>`}
+  </div>
+  <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px"><b>학습 기록 백업</b>
+  <p class="small muted" style="margin:4px 0 8px">Safari 탭과 홈 화면 앱, 다른 기기는 기록이 따로 저장됩니다. 옮기려면 한쪽에서 복사하고 다른 쪽에서 붙여 넣으세요.</p>
+  <div class="acts"><button class="btn" id="bkCopy">기록 코드 복사</button><button class="btn" id="bkApply">붙여 넣은 코드 적용</button></div>
+  <textarea id="bkText" rows="3" aria-label="기록 코드" placeholder="여기에 기록 코드를 붙여 넣고 '적용'을 누르세요" style="width:100%;margin-top:8px;font-family:var(--f-mono);font-size:12px;background:var(--paper2);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:6px"></textarea><div class="small" id="bkMsg" style="margin-top:4px"></div></div>
+  </div>`}
 function fillVoices(sel){sel.innerHTML=voices.length?voices.map(v=>`<option value="${esc(v.voiceURI)}" ${((S.set.voice||pickVoice()&&pickVoice().voiceURI)===v.voiceURI)?'selected':''}>${esc(v.name)}</option>`).join(''):'<option>일본어 음성 없음</option>'}
 function bindSettings(){
   const q=id=>document.getElementById(id);if(!q('rate'))return;
@@ -390,6 +406,9 @@ function bindSettings(){
   q('rate').onchange=()=>speak('こんにちは。関西へ ようこそ。');
   q('rubyT').onchange=e=>{S.set.ruby=e.target.checked;applySet();save()};
   q('hideko').onchange=e=>{S.set.hideko=e.target.checked;applySet();save()};
+  q('bkCopy').onclick=async()=>{const c=exportCode();const m=q('bkMsg');q('bkText').value=c;
+    try{await navigator.clipboard.writeText(c);m.textContent='복사했습니다. 다른 쪽 화면에 붙여 넣으세요.'}catch(e){q('bkText').select();m.textContent='위 코드를 길게 눌러 복사하세요.'}};
+  q('bkApply').onclick=()=>{const m=q('bkMsg');try{importCode(q('bkText').value);m.textContent='적용했습니다.';updProg();setTimeout(()=>render(),600)}catch(e){m.textContent='코드를 읽지 못했습니다. 전체를 정확히 붙여 넣었는지 확인해 주세요.'}};
   q('inputSel').onchange=e=>{S.set.input=e.target.value;save()};
   q('hidetext').onchange=e=>{S.set.hidetext=e.target.checked;save()};
   fillVoices(q('voiceSel'));q('voiceSel').onchange=e=>{S.set.voice=e.target.value;save();speak('こんにちは。')};
